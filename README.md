@@ -42,6 +42,10 @@ Seluruh langkah deterministik (seed 42), sehingga menjalankan ulang notebook men
 | SVM (linear, polynomial, Gaussian) | belum |  |
 | Naive Bayes | belum |  |
 
+| Bonus | Status | Keterangan |
+| --- | --- | --- |
+| Cost-sensitive classification (FP 2x FN) | selesai | KNN, ambang 0,65: biaya validasi turun 10,1% |
+
 ## Pembagian tugas
 
 | NIM | Nama | Tugas |
