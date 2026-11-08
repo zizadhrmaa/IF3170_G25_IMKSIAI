@@ -60,6 +60,21 @@ def accuracy(y_true, y_pred):
     return float(np.mean(np.asarray(y_true) == np.asarray(y_pred)))
 
 
+def misclassification_cost(y_true, y_pred, cost_fp=2.0, cost_fn=1.0):
+    """
+    Menghitung total biaya kesalahan klasifikasi biner dengan kelas positif = 1.
+    Prediksi benar tidak menambah biaya.
+
+    :param y_true: label asli
+    :param y_pred: label prediksi
+    :param cost_fp: biaya satu False Positive (asli 0, diprediksi 1)
+    :param cost_fn: biaya satu False Negative (asli 1, diprediksi 0)
+    :return: total biaya
+    """
+    cm = confusion_matrix(y_true, y_pred, labels=(0, 1))
+    return float(cm[0, 1] * cost_fp + cm[1, 0] * cost_fn)
+
+
 def stratified_kfold_indices(y, n_splits=5, seed=42):
     """
     Membagi indeks data menjadi n_splits fold dengan proporsi kelas yang sama di setiap fold.
