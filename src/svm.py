@@ -99,7 +99,7 @@ class SVM:
             # Batasi langkah agar kedua alpha tetap berada di antara 0 dan C
             step = min(limit_i, limit_j)
             if curvature > 0:
-                step = min(step, gap / curvature)
+                step = min(step, (gradient[i] - gradient[j]) / curvature)
             alpha[i] = np.clip(alpha[i] + labels[i] * step, 0, self.C)
             alpha[j] = np.clip(alpha[j] - labels[j] * step, 0, self.C)
             # Sesuaikan gradient setelah kedua alpha diperbarui
