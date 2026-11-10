@@ -12,6 +12,7 @@ src/
                         notebook pengerjaan (dari templat asisten)
   preprocessing.py      Preprocessor: imputasi, fitur turunan, one-hot, standarisasi
   knn.py                KNN from scratch (NumPy)
+  svm.py                SVM biner from scratch: linear, polynomial, Gaussian (NumPy)
   metrics.py            Macro F1, akurasi, confusion matrix, stratified k-fold
 docs/                   laporan (.pdf)
 output/                 hasil run: submission_*.csv dan model tersimpan (models/)
@@ -39,7 +40,7 @@ Seluruh langkah deterministik (seed 42), sehingga menjalankan ulang notebook men
 | KNN (k=21, Manhattan, bobot jarak, jarak berbobot fitur) | selesai | 0,849 |
 | DTL | belum |  |
 | Logistic Regression (L1, L2, Elastic Net) | belum |  |
-| SVM (linear, polynomial, Gaussian) | belum |  |
+| SVM (linear, polynomial, Gaussian) | selesai (wajib) | 0,7933 |
 | Naive Bayes | belum |  |
 
 | Bonus | Status | Keterangan |
