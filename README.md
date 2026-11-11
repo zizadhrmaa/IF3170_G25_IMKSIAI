@@ -40,7 +40,7 @@ Seluruh langkah deterministik (seed 42), sehingga menjalankan ulang notebook men
 | KNN (k=21, Manhattan, bobot jarak, jarak berbobot fitur) | selesai | 0,849 |
 | DTL | belum |  |
 | Logistic Regression (L1, L2, Elastic Net) | belum |  |
-| SVM (linear, polynomial, Gaussian) | selesai (wajib) | 0,7933 |
+| SVM (linear, polynomial, Gaussian) | selesai (bonus optimasi dengan differential evaluation) | 0,8264 |
 | Naive Bayes | belum |  |
 
 | Bonus | Status | Keterangan |
