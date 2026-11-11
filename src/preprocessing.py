@@ -201,3 +201,49 @@ class Preprocessor:
         """
         with open(path, "rb") as f:
             return pickle.load(f)
+
+class SVMPreprocessor(Preprocessor):
+    def __init__(self, log_history=True, binary_unscaled=True, date_encoding="original"):
+        if date_encoding not in ("original", "ordinal", "cyclical"):
+            raise ValueError("date_encoding harus 'original', 'ordinal', atau 'cyclical'")
+        super().__init__(feature_weights=None)
+        self.log_history = log_history
+        self.binary_unscaled = binary_unscaled
+        self.date_encoding = date_encoding
+
+    def _impute_numeric(self, df):
+        num = super()._impute_numeric(df)
+        if self.log_history:
+            columns = ["prior_cancellations", "prior_completed_bookings"]
+            if (num[columns] < 0).any().any():
+                raise ValueError("Riwayat booking tidak boleh negatif")
+            num[columns] = np.log1p(num[columns])
+        return num
+
+    def _derive(self, df):
+        out = super()._derive(df)
+        if self.date_encoding == "cyclical":
+            dates = pd.to_datetime(
+                dict(year=df["arrival_year"], month=df["arrival_month"],
+                     day=df["arrival_day"]), errors="coerce")
+            month_angle = 2 * np.pi * (df["arrival_month"] - 1) / 12
+            weekday_angle = 2 * np.pi * dates.dt.dayofweek / 7
+            out["arrival_month_sin"] = np.sin(month_angle)
+            out["arrival_month_cos"] = np.cos(month_angle)
+            out["arrival_weekday_sin"] = np.sin(weekday_angle)
+            out["arrival_weekday_cos"] = np.cos(weekday_angle)
+        return out
+
+    def fit(self, df):
+        super().fit(df)
+        if self.date_encoding != "original":
+            removed = {"arrival_year", "arrival_month", "arrival_day"}
+            self.numeric_features_ = [c for c in self.numeric_features_ if c not in removed]
+            self.feature_names_ = [c for c in self.feature_names_ if c not in removed]
+            self.mean_ = self.mean_[self.numeric_features_]
+            self.std_ = self.std_[self.numeric_features_]
+        if self.binary_unscaled:
+            binary = ["needs_parking", "is_returning_guest"]
+            self.mean_[binary] = 0.0
+            self.std_[binary] = 1.0
+        return self
