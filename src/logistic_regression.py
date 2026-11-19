@@ -23,6 +23,8 @@ class LogisticRegression:
         self.classes_ = np.array([0, 1])
         self.coef_ = None
         self.intercept_ = 0.0
+        self.theta_history_ = None
+        self.loss_history_ = None
 
     @staticmethod
     def _validate_X(X):
@@ -68,8 +70,13 @@ class LogisticRegression:
         l1_step = self.learning_rate * l1_strength
         l2_step = self.learning_rate * l2_strength
 
+        theta_history = np.empty((self.epochs + 1, X.shape[1] + 1))
+        loss_history = np.empty(self.epochs + 1)
+        theta_history[0] = 0.0
+        loss_history[0] = np.log(2.0)
+
         with np.errstate(over="raise", invalid="raise"):
-            for _ in range(self.epochs):
+            for epoch in range(1, self.epochs + 1):
                 for i in rng.permutation(len(X)):
                     x_i = X[i]
                     score = x_i @ weights + intercept
@@ -84,8 +91,14 @@ class LogisticRegression:
                     weights += weight_update
                     intercept += step
 
+                theta_history[epoch, 0] = intercept
+                theta_history[epoch, 1:] = weights
+                loss_history[epoch] = self._log_loss_from_scores(X @ weights + intercept, y)
+
         self.coef_ = weights
         self.intercept_ = intercept
+        self.theta_history_ = theta_history
+        self.loss_history_ = loss_history
         return self
 
     def decision_function(self, X):
@@ -104,11 +117,15 @@ class LogisticRegression:
     def predict(self, X):
         return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
 
+    @staticmethod
+    def _log_loss_from_scores(scores, y):
+        signed_scores = np.where(y == 1, -scores, scores)
+        return float(np.mean(np.logaddexp(0.0, signed_scores)))
+
     def log_loss(self, X, y):
         scores = self.decision_function(X)
         y = self._validate_y(y, len(scores))
-        signed_scores = np.where(y == 1, -scores, scores)
-        return float(np.mean(np.logaddexp(0.0, signed_scores)))
+        return self._log_loss_from_scores(scores, y)
 
     def objective(self, X, y):
         loss = self.log_loss(X, y)
