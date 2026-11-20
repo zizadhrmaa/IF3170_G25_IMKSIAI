@@ -1,3 +1,7 @@
+import pickle
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import numpy as np
 
 
@@ -135,3 +139,23 @@ class LogisticRegression:
         if l2_strength > 0:
             loss += 0.5 * l2_strength * (self.coef_ @ self.coef_)
         return float(loss)
+
+    def save(self, path):
+        if self.coef_ is None:
+            raise RuntimeError("Panggil fit sebelum menyimpan model")
+        path = Path(path)
+        with TemporaryDirectory(dir=path.parent) as tmp_dir:
+            tmp_path = Path(tmp_dir) / "model.pkl"
+            with tmp_path.open("wb") as file:
+                pickle.dump(self, file, protocol=pickle.HIGHEST_PROTOCOL)
+            tmp_path.replace(path)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, "rb") as file:
+            model = pickle.load(file)
+        if not isinstance(model, cls):
+            raise ValueError("Berkas tidak berisi model LogisticRegression")
+        if model.coef_ is None:
+            raise ValueError("Model dalam berkas belum dilatih")
+        return model
