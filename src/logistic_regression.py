@@ -124,7 +124,11 @@ class LogisticRegression:
     @staticmethod
     def _log_loss_from_scores(scores, y):
         signed_scores = np.where(y == 1, -scores, scores)
-        return float(np.mean(np.logaddexp(0.0, signed_scores)))
+        losses = np.logaddexp(0.0, signed_scores)
+        largest = losses.max()
+        if largest >= np.finfo(losses.dtype).max / losses.size:
+            return float(largest * np.mean(losses / largest))
+        return float(losses.mean())
 
     def log_loss(self, X, y):
         scores = self.decision_function(X)
