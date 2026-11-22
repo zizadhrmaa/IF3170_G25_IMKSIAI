@@ -202,6 +202,78 @@ class Preprocessor:
         with open(path, "rb") as f:
             return pickle.load(f)
 
+class NaiveBayesPreprocessor:
+    def __init__(self, n_bins=10):
+        if not isinstance(n_bins, (int, np.integer)) or isinstance(n_bins, bool) or n_bins < 2:
+            raise ValueError("n_bins harus integer minimal 2")
+        self.n_bins = n_bins
+        self.fitted_ = False
+
+    def _numeric(self, df):
+        numeric = df[NUMERIC_COLS].astype(float)
+        if np.isinf(numeric.to_numpy()).any():
+            raise ValueError("Fitur numerik tidak boleh mengandung infinity")
+        return numeric
+
+    def fit(self, df):
+        self.fitted_ = False
+        if len(df) == 0:
+            raise ValueError("Data latih tidak boleh kosong")
+        numeric = self._numeric(df)
+        # Kolom yang seluruhnya missing memakai 0 tanpa melihat validasi/test.
+        self.medians_ = numeric.median().fillna(0.0)
+        numeric = numeric.fillna(self.medians_)
+        self.bin_edges_ = {}
+        sizes = []
+        for column in NUMERIC_COLS:
+            values = numeric[column].to_numpy()
+            unique = np.unique(values)
+            if len(unique) <= self.n_bins:
+                edges = unique[:-1] / 2 + unique[1:] / 2
+            else:
+                edges = np.unique(np.quantile(values, np.linspace(0, 1, self.n_bins + 1)[1:-1]))
+                edges = edges[(edges > unique[0]) & (edges < unique[-1])]
+            self.bin_edges_[column] = edges
+            sizes.append(len(edges) + 1)
+        # Kode 0 untuk missing, 1 untuk unseen, dan 2+ untuk kategori training.
+        self.category_maps_ = {}
+        for column in CATEGORICAL_COLS:
+            categories = sorted(df[column].dropna().astype(str).unique())
+            self.category_maps_[column] = {value: i + 2 for i, value in enumerate(categories)}
+            sizes.append(len(categories) + 2)
+        self.feature_names_ = NUMERIC_COLS + CATEGORICAL_COLS
+        self.n_categories_ = np.asarray(sizes, dtype=np.int64)
+        self.fitted_ = True
+        return self
+
+    def transform(self, df):
+        if not self.fitted_:
+            raise RuntimeError("NaiveBayesPreprocessor belum di-fit")
+        numeric = self._numeric(df).fillna(self.medians_)
+        columns = [np.searchsorted(self.bin_edges_[column], numeric[column], side="right")
+                   for column in NUMERIC_COLS]
+        for column in CATEGORICAL_COLS:
+            values = df[column]
+            codes = values.astype(str).map(self.category_maps_[column]).fillna(1)
+            codes = codes.where(values.notna(), 0)
+            columns.append(codes.to_numpy(dtype=np.int64))
+        return np.column_stack(columns).astype(np.int64)
+
+    def fit_transform(self, df):
+        return self.fit(df).transform(df)
+
+    def save(self, path):
+        if not self.fitted_:
+            raise RuntimeError("NaiveBayesPreprocessor belum di-fit")
+        with open(path, "wb") as stream:
+            pickle.dump(self, stream)
+
+    @staticmethod
+    def load(path):
+        with open(path, "rb") as stream:
+            return pickle.load(stream)
+
+
 class SVMPreprocessor(Preprocessor):
     def __init__(self, log_history=True, binary_unscaled=True, date_encoding="original"):
         if date_encoding not in ("original", "ordinal", "cyclical"):
