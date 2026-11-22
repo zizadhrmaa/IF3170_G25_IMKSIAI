@@ -5,11 +5,16 @@ import numpy as np
 
 # Referensi: PPT di kelas.
 class NaiveBayes:
-    def __init__(self, alpha=1.0, min_categories=None):
+    def __init__(self, alpha=1.0, min_categories=None, decision_threshold=None):
         if not np.isscalar(alpha) or not np.isfinite(alpha) or alpha < 0:
             raise ValueError("alpha harus nonnegatif dan finite")
+        if decision_threshold is not None and (
+                not np.isscalar(decision_threshold) or not np.isfinite(decision_threshold)
+                or not 0 <= decision_threshold <= 1):
+            raise ValueError("decision_threshold harus None atau angka antara 0 dan 1")
         self.alpha = float(alpha)
         self.min_categories = min_categories
+        self.decision_threshold = decision_threshold
         self.fitted_ = False
 
     @staticmethod
@@ -32,6 +37,8 @@ class NaiveBayes:
         if y.dtype.kind not in "biufUS" or (y.dtype.kind in "f" and not np.isfinite(y).all()):
             raise ValueError("Label harus berupa angka finite atau string")
         self.classes_, encoded_y = np.unique(y, return_inverse=True)
+        if getattr(self, "decision_threshold", None) is not None and len(self.classes_) != 2:
+            raise ValueError("decision_threshold hanya untuk klasifikasi dua kelas")
         self.n_features_in_ = X.shape[1]
         self.n_categories_ = X.max(axis=0) + 1
         if self.min_categories is not None:
@@ -52,7 +59,7 @@ class NaiveBayes:
             frequencies = np.zeros((len(self.classes_), count), dtype=float)
             np.add.at(frequencies, (encoded_y, X[:, column]), 1)
             self.category_count_.append(frequencies)
-            # Additive smoothing; alpha=0 mengikuti frekuensi pada slide.
+            # Laplace smoothing untuk model wajib (alpha=1).
             # Referensi: https://scikit-learn.org/stable/modules/naive_bayes.html#categorical-naive-bayes
             with np.errstate(divide="ignore"):
                 log_prob = (np.log(frequencies + self.alpha)
@@ -88,6 +95,9 @@ class NaiveBayes:
 
     def predict(self, X):
         log_proba = self.predict_log_proba(X)
+        threshold = getattr(self, "decision_threshold", None)
+        if threshold is not None:
+            return self.classes_[(np.exp(log_proba[:, 1]) > threshold).astype(int)]
         return self.classes_[log_proba.argmax(axis=1)]
 
     def save(self, path):
@@ -100,3 +110,64 @@ class NaiveBayes:
     def load(path):
         with open(path, "rb") as stream:
             return pickle.load(stream)
+
+
+def particle_swarm_optimization(objective, bounds, initial_point, swarm_size=12,
+                                iterations=12, inertia=0.7, cognitive=1.5,
+                                social=1.5, seed=42):
+    bounds = np.asarray(bounds, dtype=float)
+    initial_point = np.asarray(initial_point, dtype=float)
+    if (bounds.ndim != 2 or bounds.shape[1] != 2 or len(bounds) == 0
+            or not np.isfinite(bounds).all() or np.any(bounds[:, 0] >= bounds[:, 1])):
+        raise ValueError("bounds harus berisi pasangan batas bawah dan atas yang valid")
+    if (initial_point.shape != (len(bounds),) or not np.isfinite(initial_point).all()
+            or np.any(initial_point < bounds[:, 0]) or np.any(initial_point > bounds[:, 1])):
+        raise ValueError("initial_point harus berada dalam bounds")
+    for name, value, minimum in [("swarm_size", swarm_size, 2), ("iterations", iterations, 1)]:
+        if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < minimum:
+            raise ValueError(f"{name} harus integer minimal {minimum}")
+    for name, value in [("inertia", inertia), ("cognitive", cognitive), ("social", social)]:
+        if not np.isscalar(value) or not np.isfinite(value) or value < 0:
+            raise ValueError(f"{name} harus nonnegatif dan finite")
+
+    rng = np.random.default_rng(seed)
+    lower, upper = bounds[:, 0], bounds[:, 1]
+    max_velocity = 0.2 * (upper - lower)
+    positions = rng.uniform(lower, upper, size=(swarm_size, len(bounds)))
+    positions[0] = initial_point
+    velocities = rng.uniform(-max_velocity, max_velocity, size=positions.shape)
+
+    def evaluate(points):
+        scores = np.array([float(objective(point.copy())) for point in points])
+        if not np.isfinite(scores).all():
+            raise ValueError("Objective harus menghasilkan skor finite")
+        return scores
+
+    personal_best = positions.copy()
+    personal_scores = evaluate(positions)
+    best_index = np.argmax(personal_scores)
+    global_best = personal_best[best_index].copy()
+    global_score = float(personal_scores[best_index])
+
+    # PSO dengan inertia, personal best, dan global best; objective dimaksimalkan.
+    # Referensi: https://doi.org/10.1109/ICNN.1995.488968
+    # Referensi: https://doi.org/10.1007/BFb0040810
+    for iteration in range(iterations):
+        r1, r2 = rng.random(positions.shape), rng.random(positions.shape)
+        velocities = (inertia * velocities
+                      + cognitive * r1 * (personal_best - positions)
+                      + social * r2 * (global_best - positions))
+        velocities = np.clip(velocities, -max_velocity, max_velocity)
+        proposed = positions + velocities
+        positions = np.clip(proposed, lower, upper)
+        velocities[proposed != positions] = 0.0
+        scores = evaluate(positions)
+        improved = scores > personal_scores
+        personal_best[improved] = positions[improved]
+        personal_scores[improved] = scores[improved]
+        best_index = np.argmax(personal_scores)
+        if personal_scores[best_index] > global_score:
+            global_best = personal_best[best_index].copy()
+            global_score = float(personal_scores[best_index])
+        print(f'Iterasi {iteration + 1}: skor terbaik = {global_score:.4f}', flush=True)
+    return global_best, global_score
