@@ -1,7 +1,7 @@
-data/
+data/*
+!data/.gitkeep
 __pycache__/
 .ipynb_checkpoints/
 *.pyc
 .venv/
 src/analysis/
-output/models/
