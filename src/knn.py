@@ -5,8 +5,11 @@ KNN adalah lazy learner, sehingga fit hanya menyimpan
 data latih. Kelas data baru ditentukan dari voting k tetangga terdekat dengan jarak Manhattan
 (p=1), Euclidean (p=2), atau Minkowski orde p.
 
-Voting berbobot 1/jarak mengacu pada P. Cunningham dan S. J. Delany, "k-Nearest Neighbour
-Classifiers: 2nd Edition (with Python examples)", arXiv:2004.04523, 2020, Section 3.
+Voting berbobot 1/jarak^power mengacu pada P. Cunningham dan S. J. Delany, "k-Nearest Neighbour
+Classifiers: 2nd Edition (with Python examples)", arXiv:2004.04523, 2020, Section 3: pangkat 1 adalah
+pilihan umum, sedangkan pangkat lebih besar makin mengurangi pengaruh tetangga yang jauh. Gagasan voting
+berbobot jarak berasal dari S. A. Dudani, "The Distance-Weighted k-Nearest-Neighbor Rule", IEEE Trans.
+Systems, Man, and Cybernetics, SMC-6(4), 1976, hlm. 325-327.
 """
 
 import pickle
@@ -23,23 +26,28 @@ class KNN:
     #: Jenis voting yang didukung.
     VALID_WEIGHTS = ("uniform", "distance")
 
-    def __init__(self, k=5, p=2, weights="uniform", batch_size=256):
+    def __init__(self, k=5, p=2, weights="uniform", batch_size=256, power=1.0):
         """
         :param k: jumlah tetangga yang ikut voting, minimal 1
         :param p: orde Minkowski; 1 = Manhattan, 2 = Euclidean
         :param weights: "uniform" jika setiap tetangga bernilai satu suara,
-                        "distance" jika suara tetangga sebesar 1/jarak
+                        "distance" jika suara tetangga sebesar 1/jarak^power
         :param batch_size: jumlah baris query yang dihitung jaraknya sekaligus
-        :raises ValueError: jika k kurang dari 1 atau weights tidak dikenal
+        :param power: pangkat jarak pada voting "distance"; 1 = 1/jarak, 2 = 1/jarak^2.
+                      Pangkat lebih besar membuat tetangga yang paling dekat lebih dominan.
+        :raises ValueError: jika k kurang dari 1, weights tidak dikenal, atau power tidak positif
         """
         if k < 1:
             raise ValueError("k harus minimal 1, didapat " + str(k))
         if weights not in self.VALID_WEIGHTS:
             raise ValueError("weights harus 'uniform' atau 'distance', didapat '" + str(weights) + "'")
+        if power <= 0:
+            raise ValueError("power harus positif, didapat " + str(power))
         self.k = k
         self.p = p
         self.weights = weights
         self.batch_size = batch_size
+        self.power = power
 
     def fit(self, X, y):
         """
@@ -121,8 +129,10 @@ class KNN:
         if self.weights == "uniform":
             w = np.ones_like(dist)
         else:
+            # Model yang disimpan sebelum parameter power ada tetap memakai 1/jarak.
+            power = getattr(self, "power", 1.0)
             with np.errstate(divide="ignore"):
-                w = 1.0 / dist
+                w = 1.0 / dist ** power
             # Tetangga berjarak 0 memiliki bobot tak hingga. Jika ada, hanya tetangga itu yang ikut voting.
             exact = dist == 0
             has_exact = exact.any(axis=1)
