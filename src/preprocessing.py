@@ -10,6 +10,9 @@ Urutan langkah mengikuti slide Data Preparation IF3170 (Materi 09):
 2. Penambahan fitur turunan.
 3. One-hot encoding; kategori yang jarang digabung menjadi "Other".
 4. Standarisasi z-score untuk kolom numerik.
+
+Catatan cleaning: drop_duplicate_rows dan drop_invalid_rows hanya boleh dipakai pada data latih.
+Data test tidak boleh dibuang barisnya karena submission harus memuat semua id.
 """
 
 import pickle
@@ -37,10 +40,10 @@ CATEGORICAL_COLS = ["meal_package", "room_category", "booking_channel"]
 #: Fitur turunan yang ditambahkan oleh Preprocessor._derive.
 DERIVED_COLS = ["log_lead_time", "arrival_date_ordinal"]
 
-
 def drop_duplicate_rows(df):
     """
     Membuang baris yang semua kolomnya, selain id, sama dengan baris sebelumnya.
+    Hanya untuk data latih.
 
     :param df: DataFrame data
     :return: DataFrame tanpa duplikat dengan indeks baru 0..n-1
@@ -48,6 +51,43 @@ def drop_duplicate_rows(df):
     cols = [c for c in df.columns if c != ID_COL]
     return df.loc[~df.duplicated(subset=cols)].reset_index(drop=True)
 
+def invalid_row_report(df):
+    """
+    Menghitung baris yang mencurigakan atau tidak valid tanpa mengubah data. Cocok dipakai di
+    notebook untuk mendokumentasikan tahap cleaning pada data latih maupun test.
+
+    Nilai yang hilang tidak dihitung karena ditangani oleh imputasi.
+
+    :param df: DataFrame data
+    :return: dict jumlah baris per kategori:
+             zero_nights (weekend_nights + weekday_nights = 0, tidak valid untuk sebuah pesanan),
+             zero_adults (num_adults = 0),
+             zero_rate (nightly_rate_idr = 0, mungkin tamu complimentary sehingga bisa valid),
+             returning_without_history (tamu returning tanpa pesanan selesai sebelumnya)
+    """
+    nights = df["weekend_nights"] + df["weekday_nights"]
+    returning = (df["is_returning_guest"] == 1) & (df["prior_completed_bookings"] == 0)
+    return {
+        "zero_nights": int((nights == 0).sum()),
+        "zero_adults": int((df["num_adults"] == 0).sum()),
+        "zero_rate": int((df["nightly_rate_idr"] == 0).sum()),
+        "returning_without_history": int(returning.sum()),
+    }
+
+def drop_invalid_rows(df):
+    """
+    Membuang pesanan dengan 0 malam menginap, yaitu weekend_nights + weekday_nights = 0.
+    Kategori lain di invalid_row_report sengaja tidak dibuang karena masih bisa valid
+    (misalnya tamu complimentary bertarif 0). Hanya untuk data latih.
+
+    Fungsi ini tidak dipanggil oleh Preprocessor. Jika dipakai pada data latih final, hasil model
+    berubah, sehingga submission Kaggle harus dihasilkan ulang dan diunggah ulang.
+
+    :param df: DataFrame data latih
+    :return: DataFrame tanpa baris 0 malam dengan indeks baru 0..n-1
+    """
+    nights = df["weekend_nights"] + df["weekday_nights"]
+    return df.loc[~(nights == 0)].reset_index(drop=True)
 
 class Preprocessor:
     """
@@ -203,7 +243,22 @@ class Preprocessor:
             return pickle.load(f)
 
 class NaiveBayesPreprocessor:
+    """
+    Preprocessing khusus Naive Bayes. Slide [5] (Maulidevi, Bayesian Network as Knowledge
+    Representation, IF3170 2024, slide 27-42) hanya membahas atribut kategorikal, sehingga
+    atribut numerik didiskretkan menjadi bin kuantil. Semua statistik dipelajari dari data latih.
+
+    Hasil transform adalah matriks kode kategori bertipe int64:
+    - fitur numerik: indeks bin 0..n_bin-1 (missing diimputasi median data latih lebih dulu),
+    - fitur kategorikal: 0 untuk missing, 1 untuk kategori yang tidak ada di data latih,
+      dan 2+ untuk kategori data latih.
+    """
+
     def __init__(self, n_bins=10):
+        """
+        :param n_bins: jumlah bin kuantil maksimum per fitur numerik, minimal 2
+        :raises ValueError: jika n_bins bukan integer minimal 2
+        """
         if not isinstance(n_bins, (int, np.integer)) or isinstance(n_bins, bool) or n_bins < 2:
             raise ValueError("n_bins harus integer minimal 2")
         self.n_bins = n_bins
@@ -216,6 +271,13 @@ class NaiveBayesPreprocessor:
         return numeric
 
     def fit(self, df):
+        """
+        Mempelajari median, batas bin kuantil, dan daftar kategori dari data latih.
+
+        :param df: DataFrame data latih
+        :return: objek ini sendiri
+        :raises ValueError: jika data kosong atau ada nilai infinity
+        """
         self.fitted_ = False
         if len(df) == 0:
             raise ValueError("Data latih tidak boleh kosong")
@@ -247,6 +309,11 @@ class NaiveBayesPreprocessor:
         return self
 
     def transform(self, df):
+        """
+        :param df: DataFrame data latih, validasi, atau test
+        :return: matriks kode kategori int64 berukuran (n, len(feature_names_))
+        :raises RuntimeError: jika fit belum dipanggil
+        """
         if not self.fitted_:
             raise RuntimeError("NaiveBayesPreprocessor belum di-fit")
         numeric = self._numeric(df).fillna(self.medians_)
@@ -260,21 +327,50 @@ class NaiveBayesPreprocessor:
         return np.column_stack(columns).astype(np.int64)
 
     def fit_transform(self, df):
+        """
+        :param df: DataFrame data latih
+        :return: matriks kode kategori data latih
+        """
         return self.fit(df).transform(df)
 
     def save(self, path):
+        """
+        :param path: lokasi berkas pickle tujuan
+        :raises RuntimeError: jika belum di-fit
+        """
         if not self.fitted_:
             raise RuntimeError("NaiveBayesPreprocessor belum di-fit")
-        with open(path, "wb") as stream:
-            pickle.dump(self, stream)
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
 
     @staticmethod
     def load(path):
+        """
+        :param path: lokasi berkas pickle hasil save
+        :return: objek NaiveBayesPreprocessor yang tersimpan
+        """
         with open(path, "rb") as stream:
             return pickle.load(stream)
 
-
 class SVMPreprocessor(Preprocessor):
+    """
+    Preprocessing khusus SVM.
+
+    Parameter
+    ---------
+    log_history : bool
+        Transformasi log1p untuk prior_cancellations dan prior_completed_bookings
+        agar distribusi ekornya lebih stabil untuk kernel Gaussian dan Polynomial.
+    binary_unscaled : bool
+        Fitur biner (needs_parking, is_returning_guest) tidak di-z-score sehingga
+        tetap bernilai 0/1. Untuk kernel linear dampaknya kecil, tetapi untuk kernel
+        Gaussian dan Polynomial hal ini mempengaruhi skala efektif gamma dan C.
+        Pilihan ini dicatat di laporan sebagai hyperparameter tetap.
+    date_encoding : {"original", "ordinal", "cyclical"}
+        Cara menyandikan arrival_year, arrival_month, arrival_day. Mode cyclical
+        menggantikan ketiga kolom dengan sin/cos bulan dan hari dalam minggu.
+    """
+
     def __init__(self, log_history=True, binary_unscaled=True, date_encoding="original"):
         if date_encoding not in ("original", "ordinal", "cyclical"):
             raise ValueError("date_encoding harus 'original', 'ordinal', atau 'cyclical'")
