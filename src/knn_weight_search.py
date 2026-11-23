@@ -23,8 +23,7 @@ import pandas as pd
 
 from knn import KNN
 from metrics import macro_f1
-from preprocessing import CATEGORICAL_COLS, Preprocessor
-
+from preprocessing import Preprocessor
 
 def feature_groups(preprocessor):
     """
@@ -40,7 +39,6 @@ def feature_groups(preprocessor):
             names.append(group)
         index.append(names.index(group))
     return names, np.array(index)
-
 
 class FeatureWeightSearch:
     """
@@ -68,9 +66,6 @@ class FeatureWeightSearch:
         self.max_rounds = max_rounds
 
     def _build_cache(self, df, y, folds, initial_weights):
-        """
-        Menyimpan delta per fitur dan label untuk M kandidat tetangga setiap baris validasi.
-        """
         n = len(df)
         deltas, labels = None, None
         for tr_idx, va_idx in folds:
@@ -82,10 +77,16 @@ class FeatureWeightSearch:
                 self.feature_names_ = names
                 deltas = np.zeros((n, self.n_candidates, len(names)), dtype=np.float32)
                 labels = np.zeros((n, self.n_candidates), dtype=np.float32)
+            else:
+                if len(names) != len(self.feature_names_):
+                    raise RuntimeError(
+                        "Dimensi fitur berbeda antar fold (%d vs %d). "
+                        "Gunakan min_category_freq=1 atau pastikan daftar kategori "
+                        "konsisten di seluruh fold." % (len(names), len(self.feature_names_))
+                    )
             col_w = np.array([initial_weights.get(names[g], 1.0) for g in group_of])
             searcher = KNN(k=self.n_candidates, p=1).fit(X_tr * col_w, y[tr_idx])
             _, cand = searcher.kneighbors(X_va * col_w)
-            # Matriks 0/1 untuk menjumlahkan selisih kolom menjadi selisih per fitur.
             to_group = np.zeros((X_tr.shape[1], len(names)))
             to_group[np.arange(X_tr.shape[1]), group_of] = 1.0
             for s in range(0, len(va_idx), 500):
@@ -98,7 +99,7 @@ class FeatureWeightSearch:
     def _score(self, w):
         """
         :param w: bobot per fitur (urutan feature_names_)
-        :return: Macro F1 out-of-fold dari k tetangga terdekat di antara kandidat
+        :return: Macro F1 out-of-fold; y diasumsikan biner 0/1
         """
         dist = self.deltas_ @ w.astype(np.float32)
         idx = np.argpartition(dist, self.k - 1, axis=1)[:, :self.k]
