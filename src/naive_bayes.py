@@ -2,10 +2,26 @@ import pickle
 
 import numpy as np
 
-
-# Referensi: PPT di kelas.
+# Referensi: [5] N. U. Maulidevi, "Bayesian Network as Knowledge Representation,"
+# IF3170 Inteligensi Artifisial, Edunex ITB, 2024, slide 27-42.
+# Klasifikasi memakai maximum a posteriori dengan probabilitas dari frekuensi data
+# dan Laplace smoothing +1 sesuai slide tersebut.
 class NaiveBayes:
+    """
+    Naive Bayes untuk fitur kategorikal yang sudah berupa kode integer nonnegatif
+    (lihat NaiveBayesPreprocessor). Naive Bayes adalah bentuk khusus Bayesian Network
+    dengan kelas sebagai satu-satunya induk setiap fitur.
+    """
+
     def __init__(self, alpha=1.0, min_categories=None, decision_threshold=None):
+        """
+        :param alpha: konstanta smoothing; 1.0 adalah Laplace smoothing +1 sesuai [5]
+        :param min_categories: jumlah kode minimum per fitur (scalar atau per fitur), dipakai agar
+                               model mengenali kode yang tidak muncul di data latih
+        :param decision_threshold: None untuk keputusan MAP (argmax). Angka 0..1 untuk klasifikasi
+                                   biner: kelas kedua diprediksi jika P(kelas kedua | x) > threshold,
+                                   misalnya 2/3 untuk biaya False Positive dua kali False Negative
+        """
         if not np.isscalar(alpha) or not np.isfinite(alpha) or alpha < 0:
             raise ValueError("alpha harus nonnegatif dan finite")
         if decision_threshold is not None and (
@@ -59,8 +75,12 @@ class NaiveBayes:
             frequencies = np.zeros((len(self.classes_), count), dtype=float)
             np.add.at(frequencies, (encoded_y, X[:, column]), 1)
             self.category_count_.append(frequencies)
-            # Laplace smoothing untuk model wajib (alpha=1).
-            # Referensi: https://scikit-learn.org/stable/modules/naive_bayes.html#categorical-naive-bayes
+            # Laplace smoothing +1 sesuai [5]: P(x = v | kelas) = (n_v + alpha) / (n_kelas + alpha * k).
+            # Di sini k adalah n_categories_, yaitu jumlah kode pada fitur tersebut. Untuk fitur
+            # hasil NaiveBayesPreprocessor, k ikut menghitung slot kode 0 (missing) dan 1 (unseen)
+            # yang tidak pernah muncul di data latih. Akibatnya probabilitas sedikit lebih halus
+            # daripada rumus yang hanya menghitung nilai teramati. Dampaknya kecil dan model tetap
+            # menjumlah ke 1 di setiap kelas.
             with np.errstate(divide="ignore"):
                 log_prob = (np.log(frequencies + self.alpha)
                             - np.log(self.class_count_[:, None] + self.alpha * count))
@@ -86,7 +106,6 @@ class NaiveBayes:
         maximum = scores.max(axis=1, keepdims=True)
         if np.any(~np.isfinite(maximum)):
             raise ValueError("Semua kelas memiliki probabilitas nol; gunakan alpha > 0")
-        # Log-sum-exp untuk normalisasi tanpa underflow.
         shifted = scores - maximum
         return shifted - np.log(np.exp(shifted).sum(axis=1, keepdims=True))
 
@@ -111,10 +130,17 @@ class NaiveBayes:
         with open(path, "rb") as stream:
             return pickle.load(stream)
 
-
 def particle_swarm_optimization(objective, bounds, initial_point, swarm_size=12,
                                 iterations=12, inertia=0.7, cognitive=1.5,
                                 social=1.5, seed=42):
+    """
+    Particle Swarm Optimization untuk tuning hyperparameter Naive Bayes.
+
+    Referensi:
+    - J. Kennedy and R. Eberhart, "Particle Swarm Optimization," in Proc. IEEE ICNN, 1995.
+    - M. Clerc and J. Kennedy, "The Particle Swarm - Explosion, Stability, and Convergence
+      in a Multidimensional Complex Space," IEEE Trans. Evolutionary Computation, 2002.
+    """
     bounds = np.asarray(bounds, dtype=float)
     initial_point = np.asarray(initial_point, dtype=float)
     if (bounds.ndim != 2 or bounds.shape[1] != 2 or len(bounds) == 0
@@ -149,9 +175,6 @@ def particle_swarm_optimization(objective, bounds, initial_point, swarm_size=12,
     global_best = personal_best[best_index].copy()
     global_score = float(personal_scores[best_index])
 
-    # PSO dengan inertia, personal best, dan global best; objective dimaksimalkan.
-    # Referensi: https://doi.org/10.1109/ICNN.1995.488968
-    # Referensi: https://doi.org/10.1007/BFb0040810
     for iteration in range(iterations):
         r1, r2 = rng.random(positions.shape), rng.random(positions.shape)
         velocities = (inertia * velocities
