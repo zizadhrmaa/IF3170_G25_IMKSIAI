@@ -2,13 +2,20 @@ import pickle
 import warnings
 
 import numpy as np
+from scipy.optimize import minimize
 
 
 class SVM:
+    """
+    SVM biner dengan formulasi dual. Masalah QP dual diselesaikan dengan SLSQP
+    (D. Kraft, "A Software Package for Sequential Quadratic Programming," DFVLR-FB 88-28, 1988)
+    melalui scipy.optimize.minimize.
+    """
+
     VALID_KERNELS = ("linear", "polynomial", "gaussian")
 
     def __init__(self, C=1.0, kernel="linear", degree=3, gamma=None,
-                 coef0=1.0, tol=1e-3, max_iter=100000, batch_size=256,
+                 coef0=1.0, tol=1e-3, max_iter=10000, batch_size=256,
                  decision_threshold=0.0, class_weight=None):
         if kernel not in self.VALID_KERNELS:
             raise ValueError("kernel harus 'linear', 'polynomial', atau 'gaussian'")
@@ -94,60 +101,70 @@ class SVM:
             raise ValueError("C dikali bobot kelas harus finite")
         self.n_features_in_ = X.shape[1]
         self.gamma_ = 1.0 / X.shape[1] if self.gamma is None else self.gamma
-        alpha = np.zeros(len(X))
-        gradient = labels.copy()
-        self.n_iter_ = 0
-        diagonal = np.empty(len(X))
-        squared_norms = (X ** 2).sum(axis=1) if self.kernel == "gaussian" else None
-        for index in range(len(X)):
-            point = X[index:index + 1]
-            diagonal[index] = self._kernel(point, point)[0, 0]
 
-        # SMO mengubah dua alpha sekaligus agar jumlah alpha dikali label tetap nol
-        # Referensi: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-98-14.pdf
-        while True:
-            can_increase = ((labels == 1) & (alpha < self.C_)) | ((labels == -1) & (alpha > 0))
-            can_decrease = ((labels == 1) & (alpha > 0)) | ((labels == -1) & (alpha < self.C_))
-            upper = np.flatnonzero(can_increase)
-            lower = np.flatnonzero(can_decrease)
-            i = upper[np.argmax(gradient[upper])]
-            j = lower[np.argmin(gradient[lower])]
-            gap = gradient[i] - gradient[j]
-            if gap <= self.tol or self.n_iter_ >= self.max_iter:
-                break
+        n = len(X)
+        K = self._kernel(X, X)
+        Q = (labels[:, None] * labels[None, :]) * K
 
-            # Pilih alpha kedua dengan memperhitungkan perubahan objektif dual.
-            # Referensi: https://www.jmlr.org/papers/v6/fan05a.html
-            column_i = self._kernel(X, X[i:i + 1], squared_norms)[:, 0]
-            curvatures = np.maximum(diagonal[i] + diagonal[lower] - 2 * column_i[lower], 1e-12)
-            differences = gradient[i] - gradient[lower]
-            gains = np.where(differences > 0, differences ** 2 / curvatures, 0)
-            j = lower[np.argmax(gains)]
-            column_j = self._kernel(X, X[j:j + 1], squared_norms)[:, 0]
-            curvature = diagonal[i] + diagonal[j] - 2 * column_i[j]
-            limit_i = self.C_[i] - alpha[i] if labels[i] == 1 else alpha[i]
-            limit_j = alpha[j] if labels[j] == 1 else self.C_[j] - alpha[j]
-            # Batas alpha mengikuti C dikali bobot kelas tiap data
-            step = min(limit_i, limit_j)
-            if curvature > 0:
-                step = min(step, (gradient[i] - gradient[j]) / curvature)
-            alpha[i] = np.clip(alpha[i] + labels[i] * step, 0, self.C_[i])
-            alpha[j] = np.clip(alpha[j] - labels[j] * step, 0, self.C_[j])
-            # Sesuaikan gradient setelah kedua alpha diperbarui
-            gradient -= step * (column_i - column_j)
-            self.n_iter_ += 1
+        def objective(alpha):
+            return 0.5 * alpha @ (Q @ alpha) - alpha.sum()
 
+        def gradient(alpha):
+            return Q @ alpha - 1.0
+
+        def eq_constraint(alpha):
+            return float(alpha @ labels)
+
+        def eq_gradient(alpha):
+            return labels
+
+        alpha0 = np.zeros(n)
+        bounds = [(0.0, float(c)) for c in self.C_]
+        constraints = [{"type": "eq", "fun": eq_constraint, "jac": eq_gradient}]
+
+        # SLSQP (Kraft, 1988) untuk QP dual dengan constraint kesetaraan dan box constraint.
+        result = minimize(
+            objective, alpha0, jac=gradient, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"maxiter": int(self.max_iter), "ftol": float(self.tol)},
+        )
+
+        alpha = np.clip(result.x, 0.0, self.C_)
+        f_raw = (alpha * labels) @ K
+
+        free = np.flatnonzero((alpha > 1e-8) & (alpha < self.C_ - 1e-8))
+        if len(free) > 0:
+            b = float(np.mean(labels[free] - f_raw[free]))
+        else:
+            lower_candidates, upper_candidates = [], []
+            at_C = np.flatnonzero(alpha >= self.C_ - 1e-8)
+            for idx in at_C:
+                if labels[idx] > 0:
+                    upper_candidates.append(1.0 - f_raw[idx])
+                else:
+                    lower_candidates.append(-1.0 - f_raw[idx])
+            at_zero = np.flatnonzero(alpha <= 1e-8)
+            for idx in at_zero:
+                if labels[idx] > 0:
+                    lower_candidates.append(1.0 - f_raw[idx])
+                else:
+                    upper_candidates.append(-1.0 - f_raw[idx])
+            if lower_candidates and upper_candidates:
+                b = float((np.max(lower_candidates) + np.min(upper_candidates)) / 2.0)
+            else:
+                b = 0.0
+
+        self.b_ = b
         self.alpha_ = alpha
-        self.b_ = (gradient[i] + gradient[j]) / 2
-        self.optimality_gap_ = max(0.0, float(gap))
-        self.converged_ = gap <= self.tol
-        self.support_ = np.flatnonzero(alpha > 0)
+        self.n_iter_ = int(getattr(result, "nit", 0))
+        self.converged_ = bool(result.success)
+        self.support_ = np.flatnonzero(alpha > 1e-8)
         self.support_vectors_ = X[self.support_]
         self.dual_coef_ = alpha[self.support_] * labels[self.support_]
         self.w_ = self.dual_coef_ @ self.support_vectors_ if self.kernel == "linear" else None
         self.fitted_ = True
         if not self.converged_:
-            warnings.warn("SVM belum konvergen, naikkan max_iter atau periksa scaling fitur",
+            warnings.warn("SVM belum konvergen: " + str(result.message),
                           RuntimeWarning, stacklevel=2)
         return self
 
@@ -159,7 +176,7 @@ class SVM:
             raise ValueError("X harus 2 dimensi dengan jumlah fitur sama seperti saat fit")
         if not np.isfinite(X).all():
             raise ValueError("X tidak boleh mengandung NaN atau infinity")
-        if self.kernel == "linear":
+        if self.kernel == "linear" and self.w_ is not None:
             scores = X @ self.w_ + self.b_
         else:
             scores = np.empty(len(X))
@@ -188,8 +205,16 @@ class SVM:
         with open(path, "rb") as f:
             return pickle.load(f)
 
+
 def differential_evolution(objective, bounds, initial_point, population_size=8,
                            generations=4, seed=42):
+    """
+    Differential Evolution (DE/rand/1/bin) untuk optimasi hyperparameter SVM.
+
+    Referensi: R. Storn and K. Price, "Differential Evolution - A Simple and Efficient
+    Heuristic for Global Optimization over Continuous Spaces," Journal of Global
+    Optimization, vol. 11, no. 4, pp. 341-359, 1997.
+    """
     bounds = np.asarray(bounds, dtype=float)
     initial_point = np.asarray(initial_point, dtype=float)
     if (bounds.ndim != 2 or bounds.shape[1] != 2 or len(bounds) == 0
@@ -209,8 +234,6 @@ def differential_evolution(objective, bounds, initial_point, population_size=8,
     if not np.isfinite(scores).all():
         raise ValueError("Objective harus menghasilkan skor finite")
 
-    # DE membentuk kandidat baru dari selisih anggota populasi
-    # Referensi: https://doi.org/10.1023/A:1008202821328
     for generation in range(generations):
         previous = population.copy()
         for i in range(population_size):
