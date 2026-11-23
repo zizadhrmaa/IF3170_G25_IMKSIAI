@@ -1,0 +1,4 @@
+perlakuan,LogReg,KNN
+tanpa penanganan,0.763645500844838,0.8351939053092716
+class weight balanced (LogReg saja),0.7499352534451189,
+random oversampling kelas batal (data latih),0.750276108377917,0.8159490548691617
