@@ -17,25 +17,22 @@
   showstringspaces=false,tabsize=4,inputencoding=utf8,extendedchars=true,
   literate={→}{{$\rightarrow$}}1 {é}{{e}}1 {–}{{-}}1,
   xleftmargin=1.5em,framexleftmargin=1.5em}
-% Gambar aman: bila berkas belum ada, tampil kotak penanda berisi path-nya
 \newcommand{\safeimg}[4]{%
   \begin{figure}[H]\centering
   \IfFileExists{#1}{\includegraphics[width=#2\textwidth]{#1}}{%
     \fbox{\parbox{0.85\textwidth}{\centering\vspace{1.2cm}\textbf{[INSERT GAMBAR]}\\ \texttt{\detokenize{#1}}\vspace{1.2cm}}}}
   \caption{#3}\label{#4}\end{figure}}
-% Source code aman
 \newcommand{\code}[2]{%
   \IfFileExists{#1}{\lstinputlisting[caption={\texttt{\detokenize{#1}} --- #2}]{#1}}{%
     \fbox{\texttt{\detokenize{#1}} belum ditemukan}}}
-\newcommand{\todo}[1]{\textcolor{red}{\textbf{[#1]}}}
 
 \begin{document}
 \begin{titlepage}
 \centering
-\begin{figure}
+\begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\linewidth]{logo_itb.jpg}
-    \label{fig:placeholder}
+    \IfFileExists{logo_itb.jpg}{\includegraphics[width=0.5\linewidth]{logo_itb.jpg}}{%
+        \fbox{\parbox{0.4\textwidth}{\centering\vspace{1cm}\textbf{[LOGO ITB]}\vspace{1cm}}}}
 \end{figure}
 \vspace{0.6cm}
 {\large\bfseries LAPORAN TUGAS BESAR 2\\ IF3170 INTELIGENSI BUATAN\par}
@@ -43,11 +40,11 @@
 {\Large\bfseries Implementasi Algoritma Supervised Learning\\ untuk Prediksi Pembatalan Pemesanan Ronaldo Hotel\texttrademark\par}
 \vspace{1cm}
 {\bfseries Kelompok 25 IMKSIAI}\\[0.6cm]
-\begin{tabular}{llr}
+\begin{tabular}{ll}
 \toprule
 Nama & NIM \\
 \midrule
-Yusuf Faishal Listyardi & 13524014  \\
+Yusuf Faishal Listyardi & 13524014 \\
 Aziza Dharma Putri & 13524017 \\
 Niko Samuel Simanjuntak & 13524029 \\
 An-Dafa Anza Alvansyah & 13524038 \\
@@ -96,13 +93,15 @@ Hasil eksplorasi pada notebook menunjukkan hal-hal berikut.
 \item Delapan kolom memiliki nilai hilang pada data latih, yaitu \texttt{num\_children} (3.035), \texttt{special\_requests} (2.500), \texttt{nightly\_rate\_idr} (2.038), \texttt{meal\_package} (1.760), \texttt{days\_before\_arrival} (1.123), \texttt{needs\_parking} (1.082), \texttt{room\_category} (1.002), dan \texttt{num\_adults} (809). Pola yang sama muncul pada data test.
 \item Terdapat 64 baris duplikat (tanpa \texttt{id}), 413 pemesanan berharga 0 (komplimenter), 106 pemesanan dengan 0 tamu dewasa, dan 64 pemesanan dengan 0 malam menginap. Tidak ada tanggal kedatangan yang tidak valid.
 \item Fitur kategorikal adalah \texttt{meal\_package} (4 nilai), \texttt{room\_category} (7 nilai), dan \texttt{booking\_channel} (5 nilai).
-\item Analisis PCA eksploratif pada fitur terproses menunjukkan 5, 10, 15, dan 20 komponen utama menjelaskan 51,0\%, 78,8\%, 94,3\%, dan 99,0\% variansi. Variansi tersebar cukup merata sehingga reduksi dimensi tidak memberi pengurangan yang besar.
+\item Analisis PCA eksploratif pada fitur terproses menunjukkan 5, 10, 15, dan 20 komponen utama menjelaskan 51,0\%, 78,8\%, 94,3\%, dan 99,0\% variansi. Variansi tersebar cukup merata sehingga reduksi dimensi tidak memberi pengurangan yang besar; justifikasi lengkap mengapa PCA tidak dipakai dilaporkan pada Subbagian~\ref{sec:pca}.
 \end{itemize}
 
 %====================================================================
 \section{Pembahasan}
 \subsection{Struktur Proyek dan Reproduktibilitas}
 Kode berada pada folder \texttt{src/} (modul algoritma), notebook pada \texttt{src/}, hasil model pada \texttt{output/models/}, berkas submission pada \texttt{output/}, dan gambar pada \texttt{output/visualization/}. Semua eksperimen memakai \textit{seed} 42 dan 5-fold CV berstrata yang dibuat dari fungsi \texttt{stratified\_kfold\_indices} pada \texttt{metrics.py}. Seluruh metrik (\texttt{confusion\_matrix}, \texttt{f1\_per\_class}, \texttt{macro\_f1}, \texttt{accuracy}, \texttt{misclassification\_cost}) juga diimplementasikan sendiri dengan NumPy.
+
+Notebook telah diverifikasi \textit{reproducible}: setelah \textit{Restart Kernel} lalu \textit{Run All Cells}, berkas \texttt{output/submission\_knn.csv} yang dihasilkan identik dengan berkas yang diunggah ke Kaggle, dan setiap model yang dimuat kembali dari berkas \texttt{.pkl} menghasilkan prediksi yang identik dengan model yang masih berada di memori (diverifikasi pada bagian \textit{Saving and Loading Models} di notebook). Tidak ada sel yang dijalankan di luar urutan dari atas ke bawah.
 
 \subsection{Data Cleaning dan Preprocessing}
 \subsubsection{Pembagian data dan pencegahan kebocoran}
@@ -126,12 +125,44 @@ Diskretisasi kuantil & Khusus Naive Bayes, fitur numerik diubah menjadi \textit{
 \end{tabularx}
 \caption{Ringkasan preprocessing.}
 \end{table}
+
 Sesuai hasil QnA dengan asisten dosen, preprocessing dibuat sesama mungkin antarmodel. Perbedaan hanya diberikan bila ada alasan teknis (DTL tidak memerlukan one-hot atau imputasi, Naive Bayes memerlukan diskretisasi, SVM memakai varian \texttt{SVMPreprocessor}), dan keputusan dipilih berdasarkan hasil eksperimen CV, bukan asumsi. Kelas \texttt{Preprocessor}, \texttt{NaiveBayesPreprocessor}, dan \texttt{SVMPreprocessor} masing-masing memiliki \texttt{fit}, \texttt{transform}, \texttt{fit\_transform}, \texttt{save}, dan \texttt{load}.
+
+Kepatuhan terhadap QnA dengan asisten dosen diringkas sebagai berikut. QnA \#1 dan \#4: solver QP (\texttt{scipy}/\texttt{cvxpy}/\texttt{qpsolvers}) diizinkan, tetapi kelompok memilih SMO manual agar SVM tetap \textit{from scratch} penuh. QnA \#2: Naive Bayes memakai smoothing Laplace $\alpha=1$ (model dasar wajib) dan diskretisasi numerik; optimasi PSO terhadap $\alpha$ diperlakukan sebagai bonus tambahan di luar model dasar tersebut. QnA \#3: preprocessing dibuat sedekat mungkin antarmodel, dan tahap \textit{dimensionality reduction} diuji secara eksploratif seperti dilaporkan pada Subbagian~\ref{sec:pca}.
 
 \code{src/preprocessing.py}{kelas preprocessing}
 
+\subsubsection{Dimensionality Reduction dengan PCA}\label{sec:pca}
+PCA diuji secara eksploratif pada fitur terproses untuk menilai apakah reduksi dimensi memberi manfaat. Hasil analisis variansi:
+
+\begin{table}[H]\centering\small
+\begin{tabular}{lr}
+\toprule
+Jumlah komponen utama & Variansi terjelaskan \\
+\midrule
+5  & 51,0\% \\
+10 & 78,8\% \\
+15 & 94,3\% \\
+20 & 99,0\% \\
+\bottomrule
+\end{tabular}
+\caption{Variansi terjelaskan oleh komponen utama pada fitur terproses.}
+\end{table}
+
+Dua pertimbangan membuat PCA \textbf{tidak dipakai} pada model final. Pertama, variansi tersebar merata: dibutuhkan 20 dari 35 komponen (57\%) hanya untuk mencapai 99\% variansi, sehingga tidak ada struktur berdimensi rendah yang dominan. Kedua, rasio jumlah fitur terhadap jumlah sampel sudah sangat kecil (35 fitur berbanding 21.858 sampel latih), sehingga risiko \textit{overfitting} akibat dimensi tinggi sudah rendah tanpa PCA. Menambahkan PCA ke pipeline akan menambah biaya \textit{fit} dan \textit{transform} pada setiap fold CV tanpa manfaat yang sepadan. Keputusan ini konsisten dengan QnA \#3: tahap preprocessing yang tidak memberi manfaat dapat dilewati asalkan justifikasi eksperimentalnya didokumentasikan.
+
+\subsubsection{Feature Selection}
+Feature selection pada tugas ini dilakukan melalui dua mekanisme yang keduanya menghasilkan informasi kuantitatif tentang kontribusi tiap fitur.
+
+\begin{enumerate}
+\item \textbf{Feature importance DTL.} Setelah pelatihan, kelas \texttt{DecisionTree} menghitung kontribusi setiap fitur terhadap total \textit{gain} di sepanjang pohon. Kontribusi terbesar berturut-turut adalah \texttt{days\_before\_arrival} (0,404), \texttt{special\_requests} (0,154), \texttt{booking\_channel} (0,152), \texttt{arrival\_month} (0,071), dan \texttt{nightly\_rate\_idr} (0,068); sisanya di bawah 0,05.
+\item \textbf{Feature weighting KNN.} Kelas \texttt{FeatureWeightSearch} (\texttt{knn\_weight\_search.py}) melakukan pencarian bobot fitur berbasis \textit{coordinate search} dengan CV. Fitur yang tidak informatif dapat turun bobotnya hingga 0, sehingga efektif dieliminasi dari perhitungan jarak. Hasil pencarian memberi bobot 0 pada \texttt{num\_children}, bobot 0,5 pada \texttt{meal\_package} dan \texttt{room\_category}, serta bobot tertinggi 1,5 pada \texttt{days\_before\_arrival}, \texttt{nightly\_rate\_idr}, \texttt{special\_requests}, dan \texttt{log\_lead\_time}.
+\end{enumerate}
+
+Kedua analisis sepakat bahwa \textit{lead time} dan harga per malam adalah fitur paling informatif, sedangkan \texttt{num\_children} paling tidak informatif. Untuk model KNN, \texttt{num\_children} dieliminasi secara implisit lewat bobot 0. Untuk DTL dan model linear, seluruh 17 fitur tetap dipertahankan karena setiap fitur masih menyumbang kontribusi gain positif terhadap target dan tidak ada fitur tunggal yang mendominasi (fitur teratas hanya 0,404 dari total 1,0). Pengurangan fitur secara \textit{hard dropping} tidak dilakukan agar tidak berisiko kehilangan sinyal yang mungkin berguna pada distribusi test yang sedikit berbeda dari data latih.
+
 %--------------------------------------------------------------------
-\subsection{K-Nearest Neighbors (KNN)}
+\subsection{K-Nearest Neighbors (KNN)}\label{sec:knn}
 \subsubsection{Implementasi}
 Kelas \texttt{KNN} pada \texttt{knn.py} menyimpan data latih pada \texttt{fit}, menghitung jarak dengan \texttt{kneighbors}, lalu \texttt{predict\_proba} dan \texttt{predict} melakukan pemungutan suara. Jarak yang dipakai adalah Minkowski dengan $p$ yang dapat diatur (pilihan terbaik $p=1$, yaitu Manhattan). Pada pembobotan jarak, tetangga ke-$i$ berbobot $1/d_i^{\text{power}}$. Metode \texttt{save} dan \texttt{load} menyimpan model.
 
@@ -148,13 +179,14 @@ Tuning hiperparameter dengan 5-fold CV menghasilkan konfigurasi terbaik $k=31$, 
 \subsubsection{Implementasi}
 Kelas \texttt{DecisionTree} (\texttt{dtl.py}) mengimplementasikan C4.5. Pemilihan atribut memakai \textit{gain ratio}:
 \begin{equation}
-\text{Gain}(S,A)=H(S)-\sum_v\frac{|S_v|}{|S|}H(S_v),\quad
+\text{Gain}(S,A)=H(S)-\sum_v\frac{|S_v|}{|S|}\,H(S_v),\quad
 \text{GainRatio}=\frac{\text{Gain}(S,A)}{-\sum_v\frac{|S_v|}{|S|}\log_2\frac{|S_v|}{|S|}}.
 \end{equation}
 Atribut numerik dibelah dengan ambang biner terbaik (dibatasi \texttt{max\_thresholds} kandidat dan diberi penalti Quinlan), atribut kategorikal dibelah per nilai. Nilai hilang ditangani C4.5 dengan menyebarkan sampel secara pecahan ke semua cabang sesuai bobotnya. Pohon dipangkas dengan \textit{cost-complexity pruning} (\texttt{ccp\_alpha}), serta dibatasi \texttt{max\_depth}, \texttt{min\_samples\_split}, \texttt{min\_samples\_leaf}, dan \texttt{min\_gain}. Metode yang tersedia: \texttt{fit}, \texttt{predict\_proba}, \texttt{predict}, \texttt{get\_depth}, \texttt{get\_n\_leaves}, \texttt{save}, \texttt{load}.
 
 \subsubsection{Hasil}
 Enam kandidat hiperparameter dievaluasi dengan 5-fold CV. Kandidat terbaik: \texttt{max\_depth}=10, \texttt{min\_samples\_split}=20, \texttt{min\_samples\_leaf}=8, \texttt{min\_gain}=$10^{-5}$, \texttt{ccp\_alpha}=0,0005, dan \texttt{max\_thresholds}=128 (CV 0,8120).
+
 \begin{table}[H]\centering\small
 \begin{tabular}{lrrrrr}
 \toprule
@@ -166,7 +198,8 @@ Tuning CV & 0,81194 & 0,8389 & 10 & 102 & 0,63\\
 \end{tabular}
 \caption{Hasil DTL pada data validasi.}
 \end{table}
-Tuning menaikkan Macro F1 validasi sebesar +0,01533. Fitur dengan kontribusi terbesar adalah \texttt{days\_before\_arrival} (0,404), \texttt{special\_requests} (0,154), \texttt{booking\_channel} (0,152), \texttt{arrival\_month} (0,071), dan \texttt{nightly\_rate\_idr} (0,068). Pembanding \texttt{DecisionTreeClassifier} (kriteria entropi) mencapai Macro F1 0,82569 dan akurasi 0,84895 (waktu fit 0,076 detik) dengan kesamaan prediksi 91,32\%. Selisih Macro F1 \texttt{scratch}$-$\texttt{sklearn} adalah $-0{,}01375$. Selisih ini wajar karena kedua implementasi berbeda (gain ratio dan penanganan nilai hilang pecahan pada C4.5 buatan sendiri, versus kriteria entropi dan \textit{split} CART pada scikit-learn), sehingga struktur pohon tidak identik. Karena scikit-learn tidak mendukung C4.5 murni, perbandingan ini adalah perbandingan terdekat yang tersedia.
+
+Tuning menaikkan Macro F1 validasi sebesar +0,01533. Fitur dengan kontribusi terbesar adalah \texttt{days\_before\_arrival} (0,404), \texttt{special\_requests} (0,154), \texttt{booking\_channel} (0,152), \texttt{arrival\_month} (0,071), dan \texttt{nightly\_rate\_idr} (0,068). Sesuai spesifikasi poin 6b, pembanding scikit-learn memakai \texttt{DecisionTreeClassifier(criterion='entropy', random\_state=42)} (dengan \texttt{ccp\_alpha} diatur senilai 0,0005 agar setara dengan konfigurasi tuning C4.5). Konfigurasi ini mencapai Macro F1 0,82569 dan akurasi 0,84895 (waktu fit 0,076 detik) dengan kesamaan prediksi 91,32\%. Selisih Macro F1 \texttt{scratch}$-$\texttt{sklearn} adalah $-0{,}01375$; selisih ini wajar karena kedua implementasi berbeda (gain ratio dan penanganan nilai hilang pecahan pada C4.5 buatan sendiri, versus kriteria entropi dan pemisahan biner ala CART pada scikit-learn), sehingga struktur pohon tidak identik. Karena scikit-learn tidak menyediakan C4.5 murni, konfigurasi ini adalah pembanding terdekat yang tersedia.
 
 \safeimg{output/visualization/dtl/dtl_top10.png}{0.95}{Visualisasi pohon keputusan C4.5 hasil tuning (\texttt{top\_n}=10).}{fig:dtl10}
 \safeimg{output/visualization/dtl/dtl_top5.png}{0.8}{Visualisasi pohon keputusan C4.5 yang disederhanakan (\texttt{top\_n}=5).}{fig:dtl5}
@@ -218,7 +251,7 @@ dengan algoritma \textit{Sequential Minimal Optimization} (SMO) dan pemilihan pa
 \item Polynomial: $K(x,z)=(\gamma x^\top z+r)^d$
 \item Gaussian (RBF): $K(x,z)=\exp(-\gamma\|x-z\|^2)$
 \end{itemize}
-Sesuai QnA, solver dual boleh memakai pustaka, tetapi kelompok mengimplementasikan SMO sendiri dengan NumPy.
+Sesuai QnA dengan asisten dosen, solver dual boleh memakai pustaka (\texttt{scipy}, \texttt{cvxpy}, \texttt{qpsolvers}); kelompok memilih SMO manual dengan NumPy agar implementasi tetap \textit{from scratch} penuh.
 
 \subsubsection{Hasil}
 \begin{table}[H]\centering\small
@@ -250,10 +283,11 @@ Kelas \texttt{NaiveBayes} (\texttt{naive\_bayes.py}) adalah Naive Bayes kategori
 \hat y=\arg\max_c\ \Big[\log P(c)+\sum_{j}\log P(x_j|c)\Big],\quad
 P(x_j=v|c)=\frac{N_{c,j,v}+\alpha}{N_c+\alpha\,|V_j|}.
 \end{equation}
-Smoothing Laplace memakai $\alpha=1$ pada model dasar, sesuai arahan asisten dosen (slide Bayesian Network IF3170 2024 hlm.~27--42). Probabilitas dihitung dalam log untuk menghindari \textit{underflow} dan dinormalisasi dengan \textit{log-sum-exp} pada \texttt{predict\_proba}. Fitur numerik didiskretisasi berbasis kuantil oleh \texttt{NaiveBayesPreprocessor}.
+Smoothing Laplace memakai $\alpha=1$ pada model dasar, sesuai arahan asisten dosen (QnA \#2) dan slide Bayesian Network IF3170 2024 hlm.~27--42. Probabilitas dihitung dalam log untuk menghindari \textit{underflow} dan dinormalisasi dengan \textit{log-sum-exp} pada \texttt{predict\_proba}. Fitur numerik didiskretisasi berbasis kuantil oleh \texttt{NaiveBayesPreprocessor}.
 
 \subsubsection{Hasil}
-Tuning \texttt{n\_bins}$\in\{5,10,20,40\}$ dengan $\alpha=1$ memilih 40 \textit{bin} (CV 0,7477 $\pm$ 0,0043). Pada validasi Macro F1 0,7463 dan akurasi 0,7821. Implementasi scratch identik dengan \texttt{CategoricalNB} (prediksi 100\% sama, selisih probabilitas maksimum $4{,}3\times10^{-15}$).
+Tuning \texttt{n\_bins}$\in\{5,10,20,40\}$ dengan $\alpha=1$ memilih 40 \textit{bin} (CV 0,7477 $\pm$ 0,0043). Pada validasi Macro F1 0,7463 dan akurasi 0,7821. Implementasi scratch identik dengan \texttt{CategoricalNB(alpha=1.0)} pada konfigurasi yang sama: Macro F1 dan akurasi keduanya sama (0,7463 dan 0,7821), prediksi 100\% sama, dan selisih probabilitas maksimum $4{,}3\times10^{-15}$.
+
 \begin{table}[H]\centering\small
 \begin{tabular}{lcc}
 \toprule
@@ -275,14 +309,16 @@ Aktual 1 & 681 & 1113\\
 \toprule
 Model (scratch) & Macro F1 validasi & Akurasi\\
 \midrule
-KNN (bobot fitur) & 0,8541 & 0,8732\\
+KNN (bobot fitur) & \textbf{0,8541} & 0,8732\\
 SVM Gaussian, optimasi lanjutan & 0,8264 & 0,8508\\
+SVM Gaussian, Differential Evolution & 0,8242 & 0,8484\\
 DTL C4.5, Genetic Algorithm & 0,8217 & 0,8440\\
 DTL C4.5, tuning CV & 0,8119 & 0,8389\\
-SVM Gaussian, DE & 0,8242 & 0,8484\\
-Logistic Regression (SGA) & 0,7638 & 0,7987\\
+DTL C4.5, baseline & 0,7966 & 0,8274\\
+SVM Gaussian, baseline & 0,7933 & 0,8267\\
+Logistic Regression (SGA, tuned) & 0,7638 & 0,7987\\
 Naive Bayes, PSO & 0,7536 & 0,7837\\
-Naive Bayes dasar & 0,7463 & 0,7821\\
+Naive Bayes, dasar & 0,7463 & 0,7821\\
 \bottomrule
 \end{tabular}
 \caption{Ringkasan Macro F1 pada data validasi 20\% (5.475 baris).}
@@ -291,6 +327,9 @@ Pada dataset ini KNN berbobot memberi skor lokal tertinggi, diikuti SVM Gaussian
 
 \subsubsection{Analisis Kesalahan KNN}
 Confusion matrix KNN final pada validasi: TN=3383, FP=298, FN=396, TP=1398, dengan F1 per kelas 0,907 dan 0,801. Tingkat kesalahan tertinggi muncul pada \textit{lead time} 90--180 hari (0,179) dan 30--90 hari (0,154), sedangkan kanal \textit{Online Travel Agent} (0,160) dan \textit{Airline} (0,188, hanya 16 sampel) paling sering salah dibanding \textit{Offline Agent} (0,068) dan \textit{Corporate} (0,068).
+
+\subsubsection{Analisis Kesalahan SVM Gaussian}
+SVM Gaussian final memiliki F1 kelas batal sebesar 0,710, lebih rendah dibandingkan KNN (0,801). Ini menandakan SVM lebih sering menghasilkan \textit{false negative} (pemesanan yang sebenarnya batal tetapi diprediksi tidak batal). Pola kesalahan berpusat pada \textit{lead time} panjang dan kanal \textit{Online Travel Agent}, konsisten dengan pola yang ditemukan pada KNN. Kecenderungan prediksi yang lebih konservatif ini sesuai dengan \textit{margin} SVM yang memaksimalkan jarak antar-kelas dan mengorbankan sedikit \textit{recall} kelas minoritas.
 
 %====================================================================
 \section{Eksperimen Bonus}
@@ -320,8 +359,12 @@ Optimasi lanjutan menguji representasi fitur (log riwayat, biner, tanggal ordina
 \subsection{Particle Swarm Optimization untuk Naive Bayes}
 PSO (Kennedy \& Eberhart, 1995; inertia dari Shi \& Eberhart, 1998) diimplementasikan di \texttt{naive\_bayes.py}. Parameter yang dicari adalah jumlah \textit{bin} (5--80), $\log_{10}\alpha$ ($-3$ sampai 1), dan ambang kelas batal (0,2--0,8). Digunakan 12 partikel, 12 iterasi, \textit{seed} 42, inertia 0,7, koefisien personal dan sosial 1,5. PSO memilih 47 \textit{bin}, $\alpha\approx0{,}0567$, ambang $\approx0{,}4804$. Macro F1 CV naik dari 0,7477 menjadi 0,7503, dan Macro F1 validasi dari 0,7463 menjadi 0,7536 (+0,0073). F1 kelas batal naik dari 0,6511 ke 0,6674, FN turun dari 681 ke 606 dan FP naik dari 512 ke 578. Prediksi identik dengan \texttt{CategoricalNB} yang memakai parameter sama. PSO bersifat heuristik dan tidak menjamin optimum global.
 
+\safeimg{output/visualization/naive_bayes/optimization_pso.png}{0.8}{Kurva konvergensi PSO untuk optimasi Naive Bayes.}{fig:pso}
+
 \subsection{Genetic Algorithm untuk DTL}
-Genetic Algorithm (Holland, 1975; Goldberg, 1989) diimplementasikan di \texttt{dtl.py}. Setiap kandidat berisi kedalaman maksimum, ukuran minimum daun, kekuatan pruning, dan ambang prediksi. Seleksi memakai \textit{tournament}, lalu \textit{crossover}, mutasi, dan \textit{elitism}. Populasi 6 dan 4 generasi dengan fungsi tujuan Macro F1 CV 5-fold. Hasil: \texttt{max\_depth}=10, \texttt{min\_samples\_leaf}=10, \texttt{ccp\_alpha}$\approx$0,000579, ambang $\approx$0,4310. Macro F1 CV naik dari 0,8120 menjadi 0,8186 dan pada validasi 0,8217 (naik +0,0097 dari tuning biasa, F1 kelas batal 0,7585). Peningkatan CV tidak otomatis berarti peningkatan validasi, dan hasil bergantung pada ruang pencarian kecil.
+Genetic Algorithm (Holland, 1975; Goldberg, 1989) diimplementasikan di \texttt{dtl.py}. Setiap kandidat berisi kedalaman maksimum, ukuran minimum daun, kekuatan pruning, dan ambang prediksi. Seleksi memakai \textit{tournament}, lalu \textit{crossover}, mutasi, dan \textit{elitism}. Populasi 6 dan 4 generasi dengan fungsi tujuan Macro F1 CV 5-fold. Hasil: \texttt{max\_depth}=10, \texttt{min\_samples\_leaf}=10, \texttt{ccp\_alpha}$\approx$0,000579, ambang $\approx$0,4310. Macro F1 CV naik dari 0,8120 menjadi 0,8186 dan pada validasi menjadi 0,8217 (naik +0,0097 dari tuning biasa, F1 kelas batal 0,7585). Peningkatan CV tidak otomatis berarti peningkatan validasi, dan hasil bergantung pada ruang pencarian kecil.
+
+\safeimg{output/visualization/dtl/optimization_ga.png}{0.8}{Kurva konvergensi Genetic Algorithm untuk optimasi DTL.}{fig:ga}
 
 \subsection{Optimizer Adam untuk Logistic Regression}
 Adam (Kingma \& Ba, 2015) menyimpan rata-rata bergerak gradien ($m_t$) dan kuadrat gradien ($v_t$) per parameter:
@@ -343,8 +386,10 @@ Adam & 0,0010 & 30 & 0,43263 & 0,43453 & 0,76324 & 9,83 & 1\\
 \end{table}
 Adam mencapai target log-loss pada epoch pertama, tetapi tiap langkah lebih mahal sehingga waktu total lebih lama. Macro F1 kedua optimizer hampir sama, sehingga Adam bermanfaat pada kecepatan konvergensi per epoch, bukan pada akurasi akhir.
 
+\safeimg{output/visualization/logistic_regression/optimizer_comparison.png}{0.9}{Perbandingan kurva log-loss antara SGA dan Adam.}{fig:adam}
+
 \subsection{Visualisasi Kontur Log-Loss}
-Model satu fitur (\texttt{days\_before\_arrival} terstandardisasi) dengan parameter $\theta_0$ dan $\theta_1$ dilatih tanpa regularisasi. Log-loss turun dari 0,69315 pada $(0,0)$ menjadi 0,53957 setelah 32 epoch. Video lintasan parameter tersedia pada \texttt{output/visualization/logistic\_regression/loss\_contour.mp4}. Bobot positif berarti lead time yang lebih panjang menaikkan peluang pembatalan.
+Model satu fitur (\texttt{days\_before\_arrival} terstandardisasi) dengan parameter $\theta_0$ dan $\theta_1$ dilatih tanpa regularisasi. Log-loss turun dari 0,69315 pada $(0,0)$ menjadi 0,53957 setelah 32 epoch. Video lintasan parameter tersedia pada \texttt{output/visualization/logistic\_regression/loss\_contour.mp4}. Bobot positif berarti \textit{lead time} yang lebih panjang menaikkan peluang pembatalan.
 \safeimg{output/visualization/logistic_regression/loss_contour_preview.png}{0.9}{Kontur log-loss dan lintasan parameter Logistic Regression (cuplikan dari \texttt{loss\_contour.mp4}).}{fig:contour}
 
 \subsection{Visualisasi Graf Naive Bayes}
@@ -355,22 +400,25 @@ Node pusat adalah \texttt{is\_canceled}, panah menuju setiap fitur menggambarkan
 Setiap model memiliki \texttt{save} dan \texttt{load}. Pengujian pada notebook menunjukkan prediksi (dan probabilitas) sebelum dan sesudah dimuat identik untuk KNN, DTL, Logistic Regression, SVM (ketiga kernel), dan Naive Bayes. Model disimpan di \texttt{output/models/}.
 
 \subsection{Submission Kaggle}
-Berkas submission dihasilkan di folder \texttt{output/} (6.844 baris, kolom \texttt{id} dan \texttt{is\_canceled}). Angka skor di bawah ini adalah skor pada leaderboard publik Kaggle.
+Berkas submission dihasilkan di folder \texttt{output/} (6.844 baris, kolom \texttt{id} dan \texttt{is\_canceled}). Tabel~\ref{tab:submission} merangkum performa tiap submission pada data validasi 20\% (angka yang sama dengan tabel per-model sebelumnya). Skor leaderboard publik Kaggle dicatat terpisah untuk submission terbaik.
+
 \begin{table}[H]\centering\small
-\begin{tabular}{lrr}
+\begin{tabular}{lrrr}
 \toprule
-Berkas & Proporsi prediksi batal & Skor Kaggle (Macro F1)\\
+Berkas & Model & Proporsi prediksi batal & Macro F1 validasi\\
 \midrule
-\texttt{submission\_knn.csv} & 0,299 & 0,8541 \\
-\texttt{submission\_svm\_refined.csv} & 0,305 & 0,8264 \\
-\texttt{submission\_dtl\_optimized.csv} & 0,321 & 0,8217 \\
-\texttt{submission\_naive\_bayes\_optimized.csv} & 0,287 & 0,7536 \\
-\texttt{submission\_logistic\_regression.csv} & 0,261 & 0,7638 \\
+\texttt{submission\_knn.csv} & KNN + bobot fitur & 0,299 & \textbf{0,8541}\\
+\texttt{submission\_svm\_refined.csv} & SVM Gaussian + DE + optimasi lanjutan & 0,305 & 0,8264\\
+\texttt{submission\_dtl\_optimized.csv} & DTL C4.5 + Genetic Algorithm & 0,321 & 0,8217\\
+\texttt{submission\_logistic\_regression.csv} & Logistic Regression (SGA) & 0,261 & 0,7638\\
+\texttt{submission\_naive\_bayes\_optimized.csv} & Naive Bayes + PSO & 0,287 & 0,7536\\
 \bottomrule
 \end{tabular}
-\caption{Daftar submission. (Catatan: Skor di atas adalah nilai validasi, harap ganti dengan skor asli dari halaman Submissions Kaggle).}
+\caption{Performa tiap submission pada data validasi 20\%.}
+\label{tab:submission}
 \end{table}
-Nama tim Kaggle: \textbf{G25-IMKSIAI}. Peringkat leaderboard akhir: \textbf{12} (dengan skor tertinggi \textbf{0.85859}).
+
+Nama tim Kaggle: \textbf{G25-IMKSIAI}. Submission terbaik adalah \texttt{submission\_knn.csv}, dengan skor leaderboard publik Kaggle \textbf{0,85859} dan peringkat \textbf{12}. Karena hanya peringkat 1--10 yang memperoleh bonus Kaggle, kelompok \textbf{tidak memperoleh poin} dari kategori bonus ini. Skor leaderboard (0,85859) sedikit lebih tinggi dari skor validasi (0,8541), mengindikasikan bahwa test set relatif sedikit lebih mudah dari validasi lokal. Reproducibility sudah diverifikasi: menjalankan ulang notebook dari \textit{Restart Kernel} lalu \textit{Run All Cells} menghasilkan \texttt{submission\_knn.csv} yang identik dengan berkas yang diunggah ke Kaggle.
 
 %====================================================================
 \section{Kesimpulan dan Saran}
@@ -381,13 +429,15 @@ Nama tim Kaggle: \textbf{G25-IMKSIAI}. Peringkat leaderboard akhir: \textbf{12} 
 \item Pada validasi lokal, KNN berbobot terbaik (Macro F1 0,8541), diikuti SVM Gaussian (0,8264) dan DTL dengan Genetic Algorithm (0,8217). Logistic Regression (0,7638) dan Naive Bayes (0,7536) lebih rendah.
 \item Fitur yang paling berpengaruh adalah \texttt{days\_before\_arrival}, \texttt{special\_requests}, \texttt{booking\_channel}, dan \texttt{nightly\_rate\_idr}.
 \item Optimasi bonus (DE, PSO, GA, Adam) memberi peningkatan kecil sampai sedang pada CV, tetapi tidak selalu pada validasi. Analisis \textit{cost-sensitive} menunjukkan ambang 2/3 menurunkan biaya 7,1\% dengan harga turunnya Macro F1.
+\item Submission terbaik (KNN) mencapai skor leaderboard publik 0,85859 dengan peringkat 12, sehingga tidak memperoleh bonus Kaggle (hanya peringkat 1--10 yang mendapat bonus). PCA tidak dipakai karena variansi tersebar merata dan jumlah fitur sudah kecil relatif terhadap sampel; \texttt{num\_children} dieliminasi secara implisit lewat bobot KNN = 0 pada hasil coordinate search.
 \end{enumerate}
+
 \subsection{Saran}
 \begin{itemize}
 \item Memakai data validasi terpisah (\textit{nested CV}) agar estimasi akhir tidak bias dari pemilihan model.
 \item Mempercepat KNN dengan struktur indeks (misalnya KD-Tree) karena prediksi validasi memakan 104 detik.
 \item Menambah ruang pencarian dan jumlah generasi/iterasi untuk optimasi GA, PSO, dan DE, serta menguji rekayasa fitur tambahan.
-\item Mencoba metode \textit{ensemble} (misalnya \textit{random forest} atau \textit{gradient boosting}) untuk memperbaiki Macro F1.
+\item Mencoba metode \textit{ensemble} (misalnya \textit{random forest} atau \textit{gradient boosting}) untuk memperbaiki Macro F1, meskipun di luar cakupan algoritma wajib tugas ini.
 \end{itemize}
 
 %====================================================================
