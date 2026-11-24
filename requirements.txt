@@ -1,4 +1,9 @@
 numpy
 pandas
 matplotlib
-scikit-learn
+scikit-learn>=1.2
+joblib
+packaging
+ipython
+ipykernel
+imageio-ffmpeg
