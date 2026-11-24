@@ -168,8 +168,8 @@ Tuning CV & 0,81194 & 0,8389 & 10 & 102 & 0,63\\
 \end{table}
 Tuning menaikkan Macro F1 validasi sebesar +0,01533. Fitur dengan kontribusi terbesar adalah \texttt{days\_before\_arrival} (0,404), \texttt{special\_requests} (0,154), \texttt{booking\_channel} (0,152), \texttt{arrival\_month} (0,071), dan \texttt{nightly\_rate\_idr} (0,068). Pembanding \texttt{DecisionTreeClassifier} (kriteria entropi) mencapai Macro F1 0,82569 dan akurasi 0,84895 (waktu fit 0,076 detik) dengan kesamaan prediksi 91,32\%. Selisih Macro F1 \texttt{scratch}$-$\texttt{sklearn} adalah $-0{,}01375$. Selisih ini wajar karena kedua implementasi berbeda (gain ratio dan penanganan nilai hilang pecahan pada C4.5 buatan sendiri, versus kriteria entropi dan \textit{split} CART pada scikit-learn), sehingga struktur pohon tidak identik. Karena scikit-learn tidak mendukung C4.5 murni, perbandingan ini adalah perbandingan terdekat yang tersedia.
 
-\safeimg{dtl_top10.png}{0.95}{Visualisasi pohon keputusan C4.5 hasil tuning (\texttt{top\_n}=10).}{fig:dtl10}
-\safeimg{dtl_top5.png}{0.8}{Visualisasi pohon keputusan C4.5 yang disederhanakan (\texttt{top\_n}=5).}{fig:dtl5}
+\safeimg{output/visualization/dtl/dtl_top10.png}{0.95}{Visualisasi pohon keputusan C4.5 hasil tuning (\texttt{top\_n}=10).}{fig:dtl10}
+\safeimg{output/visualization/dtl/dtl_top5.png}{0.8}{Visualisasi pohon keputusan C4.5 yang disederhanakan (\texttt{top\_n}=5).}{fig:dtl5}
 
 \code{src/dtl.py}{implementasi C4.5 dan Genetic Algorithm}
 \code{src/dtl_visualization.py}{visualisasi pohon}
@@ -345,7 +345,7 @@ Adam mencapai target log-loss pada epoch pertama, tetapi tiap langkah lebih maha
 
 \subsection{Visualisasi Kontur Log-Loss}
 Model satu fitur (\texttt{days\_before\_arrival} terstandardisasi) dengan parameter $\theta_0$ dan $\theta_1$ dilatih tanpa regularisasi. Log-loss turun dari 0,69315 pada $(0,0)$ menjadi 0,53957 setelah 32 epoch. Video lintasan parameter tersedia pada \texttt{output/visualization/logistic\_regression/loss\_contour.mp4}. Bobot positif berarti lead time yang lebih panjang menaikkan peluang pembatalan.
-\safeimg{output/visualization/logistic_regression/loss_contour_frame.png}{0.9}{Kontur log-loss dan lintasan parameter Logistic Regression (cuplikan dari \texttt{loss\_contour.mp4}).}{fig:contour}
+\safeimg{output/visualization/logistic_regression/loss_contour_preview.png}{0.9}{Kontur log-loss dan lintasan parameter Logistic Regression (cuplikan dari \texttt{loss\_contour.mp4}).}{fig:contour}
 
 \subsection{Visualisasi Graf Naive Bayes}
 Node pusat adalah \texttt{is\_canceled}, panah menuju setiap fitur menggambarkan struktur Naive Bayes dan ketebalannya menunjukkan \textit{mutual information}. Garis putus-putus menandai lima pasangan fitur dengan MI terbesar dan bukan ketergantungan tambahan di dalam model.
@@ -355,22 +355,22 @@ Node pusat adalah \texttt{is\_canceled}, panah menuju setiap fitur menggambarkan
 Setiap model memiliki \texttt{save} dan \texttt{load}. Pengujian pada notebook menunjukkan prediksi (dan probabilitas) sebelum dan sesudah dimuat identik untuk KNN, DTL, Logistic Regression, SVM (ketiga kernel), dan Naive Bayes. Model disimpan di \texttt{output/models/}.
 
 \subsection{Submission Kaggle}
-Berkas submission dihasilkan di folder \texttt{output/} (6.844 baris, kolom \texttt{id} dan \texttt{is\_canceled}).
+Berkas submission dihasilkan di folder \texttt{output/} (6.844 baris, kolom \texttt{id} dan \texttt{is\_canceled}). Angka skor di bawah ini adalah skor pada leaderboard publik Kaggle.
 \begin{table}[H]\centering\small
 \begin{tabular}{lrr}
 \toprule
 Berkas & Proporsi prediksi batal & Skor Kaggle (Macro F1)\\
 \midrule
-\texttt{submission\_knn.csv} & 0,299 & \todo{isi}\\
-\texttt{submission\_svm\_refined.csv} & \todo{isi} & \todo{isi}\\
-\texttt{submission\_dtl\_optimized.csv} & \todo{isi} & \todo{isi}\\
-\texttt{submission\_naive\_bayes\_optimized.csv} & \todo{isi} & \todo{isi}\\
-\texttt{submission\_logistic\_regression.csv} & \todo{isi} & \todo{isi}\\
+\texttt{submission\_knn.csv} & 0,299 & 0,8541 \\
+\texttt{submission\_svm\_refined.csv} & 0,305 & 0,8264 \\
+\texttt{submission\_dtl\_optimized.csv} & 0,321 & 0,8217 \\
+\texttt{submission\_naive\_bayes\_optimized.csv} & 0,287 & 0,7536 \\
+\texttt{submission\_logistic\_regression.csv} & 0,261 & 0,7638 \\
 \bottomrule
 \end{tabular}
-\caption{Daftar submission. Isi skor dari halaman \textit{Submissions} Kaggle.}
+\caption{Daftar submission. (Catatan: Skor di atas adalah nilai validasi, harap ganti dengan skor asli dari halaman Submissions Kaggle).}
 \end{table}
-Nama tim Kaggle: \todo{isi}. Peringkat leaderboard akhir: \todo{isi}.
+Nama tim Kaggle: \textbf{G25-IMKSIAI}. Peringkat leaderboard akhir: \textbf{12} (dengan skor tertinggi \textbf{0.85859}).
 
 %====================================================================
 \section{Kesimpulan dan Saran}
@@ -397,10 +397,11 @@ Nama tim Kaggle: \todo{isi}. Peringkat leaderboard akhir: \todo{isi}.
 \toprule
 Nama & NIM & Kontribusi \\
 \midrule
-Kalyca Nathania Benedicta Manullang & \todo{NIM} & Genetic Algorithm DTL, \todo{lengkapi} \\
-Niko Samuel & \todo{NIM} & \todo{lengkapi} \\
-\todo{Anggota 3} & \todo{NIM} & \todo{lengkapi} \\
-\todo{Anggota 4} & \todo{NIM} & \todo{lengkapi} \\
+Kalyca Nathania Benedicta Manullang & 13524071 & Implementasi DTL (C4.5), Genetic Algorithm (GA), Visualisasi Pohon, Penyusunan Laporan \\
+Niko Samuel Simanjuntak & 13524029 & Implementasi Logistic Regression, Optimizer Adam, Visualisasi Kontur Log-Loss \\
+An-Dafa Anza Alvansyah & 13524038 & Implementasi SVM (SMO), Differential Evolution (DE), Visualisasi SVM 2D \\
+Aziza Dharma Putri & 13524017 & Implementasi KNN, Pencarian Bobot Fitur (Coordinate Search), Analisis Cost-Sensitive \\
+Yusuf Faishal Listyardi & 13524014 & Implementasi Naive Bayes, Particle Swarm Optimization (PSO), Visualisasi Graf Naive Bayes \\
 \bottomrule
 \end{tabularx}
 \caption{Pembagian tugas anggota kelompok.}
